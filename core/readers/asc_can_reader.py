@@ -110,6 +110,9 @@ def _parse_payload_tail(tail: bytes, data_len: int, numeric_base: int) -> bytes:
 
 # ASC marks a LIN event where a CAN line carries its channel number.
 _LIN_MARKERS = (b'Li', b'LIN')
+# Some CANoe exports combine the LIN marker and channel: L30 / Li30 / LIN30.
+_LIN_COMPACT_CHANNEL = re.compile(rb'[Ll](?:[Ii](?:[Nn])?)?(\d+)')
+_LIN_COMPACT_PREFIX = re.compile(rb'^\S+\s+[Ll](?:[Ii](?:[Nn])?)?\d+\s')
 _LIN_DIRECTIONS = {b'rx': 0, b'tx': 1, b'txrq': 1}
 
 
@@ -131,13 +134,17 @@ def _parse_lin_line(line: bytes, numeric_base: int):
     have no direction token and therefore fall out here as ``None``.
     """
     tokens = line.split()
-    if len(tokens) < 6 or tokens[1] not in _LIN_MARKERS:
+    if len(tokens) < 6:
         return None
+    compact_channel = _LIN_COMPACT_CHANNEL.fullmatch(tokens[1])
+    if tokens[1] not in _LIN_MARKERS and compact_channel is None:
+        return None
+    id_index = 2 if compact_channel is not None else 3
 
     direction_index = next(
         (
             index
-            for index in range(3, min(len(tokens), 7))
+            for index in range(id_index + 1, min(len(tokens), id_index + 4))
             if tokens[index].lower() in _LIN_DIRECTIONS
         ),
         -1,
@@ -158,10 +165,13 @@ def _parse_lin_line(line: bytes, numeric_base: int):
 
     try:
         timestamp = float(tokens[0])
-        channel = int(tokens[2])
+        channel = (
+            int(compact_channel.group(1))
+            if compact_channel is not None else int(tokens[2])
+        )
         # LIN frame IDs are 6-bit; mask so a logged protected ID (parity in the
         # top two bits) still matches the database.
-        arb_id = int(tokens[3], numeric_base) & 0x3F
+        arb_id = int(tokens[id_index], numeric_base) & 0x3F
         data_len = min(int(tokens[length_index]), 8)
     except (ValueError, IndexError):
         return None
@@ -359,7 +369,9 @@ class ASCCANReader:
                     # status field.  Non-standard lines use the general parser
                     # below without changing accepted ASC variants.
                     is_lin = False
-                    if not special and (b' Li ' in line[:32] or b' LIN ' in line[:32]):
+                    if not special and (
+                            b' Li ' in line[:32] or b' LIN ' in line[:32]
+                            or _LIN_COMPACT_PREFIX.match(line[:32])):
                         parsed = _parse_lin_line(line, numeric_base)
                         if parsed is None:
                             continue
