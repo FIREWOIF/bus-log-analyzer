@@ -4,6 +4,10 @@
 > repository moved to `github.com/osvanta/bus-log-analyzer`. Releases up to and
 > including v00.00.60 were published as **CAN Scope / CANScope**; the entries below
 > use the names in force at the time of each release.
+## [v00.02.03] — 2026-11-06: support compact LIN ASC channel names
+
+- **Fixed:** Vector LIN ASC exports using compact channel names such as `L30`, `Li30` and `LIN30` are now recognized and decoded on their actual LIN channels.
+
 ## [v00.02.02] — 2026-10-22: measurements of many gigabytes load without running out of memory
 
 - **Fixed:** a very large measurement no longer runs out of memory. Pre-decoded MF4/MDF, BLF, ASC and bus-logging MF4 files of many gigabytes load in memory that does not grow with the file.
